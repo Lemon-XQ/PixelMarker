@@ -13,7 +13,7 @@
 - 无Matlab R2017a：
   - **安装Runtime From WEB:**  运行**PixelMarkerInstaller_web.exe**
 	  - 注：如提示网络错误需要翻墙后再运行
-  - 直接安装整个Runtime：
+  - 直接安装整个Runtime：https://pan.baidu.com/s/1ggkNp2V 密码: vihi
 
 ## Use
 #### 1.打开一张图片
