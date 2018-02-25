@@ -58,6 +58,7 @@ global pointHandles;%cell
 global count;
 global img;
 global fid;
+global saved;
 
 fid = -1;
 img = -1;
@@ -65,6 +66,7 @@ points = [];
 tmp = [];
 pointHandles = {};%cell
 count = 1;
+saved = 0;
 
 % Choose default command line output for PixelMarker
 handles.output = hObject;
@@ -99,21 +101,50 @@ function Open_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 import matlab.io.*;
 global img;
+global fid;
 global width;
 global height;
+global newpath;
+global saved;
+global imgName;
 
+% 先释放原有的图像及文件句柄
+if img ~= -1 
+    clear img;
+end
+if fid ~= -1
+    fclose(fid);
+    fid = -1;
+end
+
+saved = 0;
 hold off;
 axes(handles.axes2);  
-[filename,pathname]=uigetfile({'*.bmp;*.jpg;*.png;*.jpeg;*.tif;*.fits'},'Select an image',...  
-                'C:');  
+% 记录当前路径
+oldpath=cd;
+if isempty(newpath) || ~exist('newpath')
+    newpath=cd;
+end
+cd(newpath);
+[filename,pathname]=uigetfile({'*.bmp;*.jpg;*.png;*.jpeg;*.tif;*.fits'},'Select an image'); 
+if filename~=0
+    newpath=pathname;
+end
+cd(oldpath);
+ 
+imgName = filename;
+if imgName~=0
+    set(handles.figure1,'Name',imgName); % 更改标题
+end
 str=[pathname filename];  
 if isequal(filename,0)||isequal(pathname,0)  
     warndlg('Please select a picture first!','Warning');  
     return;  
 elseif filename(end-3:end)=='fits'  
     img = fitsread(str);
-    fptr = fits.openFile(str);
-    imgSize = fits.getImgSize(fptr);
+    imgPtr = fits.openFile(str);
+    imgSize = fits.getImgSize(imgPtr);
+    fits.closeFile(imgPtr);
     height = imgSize(1);
     width = imgSize(2);
     % 左右翻转，上下翻转
@@ -126,7 +157,6 @@ else
 end 
 hold on;
 
-
 % --------------------------------------------------------------------
 function Save_Callback(hObject, eventdata, handles)
 % hObject    handle to Save (see GCBO)
@@ -136,6 +166,9 @@ global points;
 global tmp;
 global fid;
 global img;
+global saveNewPath;
+global saved;
+global imgName;
 
 % 合法性校验
 if img == -1
@@ -144,20 +177,33 @@ if img == -1
 end
 
 % 第一次保存时创建保存文件
-if fid == -1
+if saved == 0
+    saved = 1;
+    % 记录当前路径
+    saveOldPath=cd;
+    if isempty(saveNewPath) || ~exist('saveNewPath')
+        saveNewPath=cd;
+    end
+    cd(saveNewPath);
+    file = [imgName(1:end-5),'.txt'];
     % 指定保存路径及文件名
-    [FileName,PathName] = uiputfile({'*.txt'},...  
-                                     'Save Plots','Untitled');  
-    fileStr = [PathName FileName];
+    [fileName,pathName] = uiputfile({'*.txt'},...  
+                                     'Save Plots',file);  
+    fileStr = [pathName fileName];
+    if fileName~=0
+        saveNewPath=pathName;
+    end
+    cd(saveOldPath);
+    
     % 合法性校验
-    if FileName==0  
+    if fileName==0  
         return;  
     else  
         fid = fopen(fileStr,'wt');  
     end
 end
 
-set(handles.figure1,'Name','PixelMarker'); % 更改标题
+set(handles.figure1,'Name',imgName); % 更改标题
 
 % 保存标记点坐标
 if ~isempty(points) %连续按两次保存无效，防止重复记录
@@ -173,6 +219,10 @@ if ~isempty(points) %连续按两次保存无效，防止重复记录
     tmp = points;
     points = [];
 end
+
+%保存标记后的图像
+imgName_out = [imgName(1:end-5),'.png'];
+print(gcf,'-dpng',imgName_out);
 
 % --------------------------------------------------------------------
 function Open_ClickedCallback(hObject, eventdata, handles)
@@ -206,6 +256,7 @@ global pointHandles;
 global count;
 global fid;
 global img;
+global imgName;
 
 % 合法性校验
 if img == -1
@@ -216,7 +267,8 @@ elseif fid == -1 && isempty(points)
     return;
 end
 
-set(handles.figure1,'Name','PixelMarker*'); % 更改标题
+title = [imgName,'*'];
+set(handles.figure1,'Name',title); % 更改标题
 
 if ~isempty(pointHandles)
     if count > 1 && ~isempty(pointHandles)
@@ -252,6 +304,8 @@ global count;
 global points;
 global tmp;
 global img;
+global imgName;
+global posText;
 
 % 合法性校验
 if img == -1
@@ -260,10 +314,13 @@ if img == -1
 end
 
 set(handles.hintText,'string','按ESC结束标记');
-set(handles.figure1,'Name','PixelMarker*'); % 更改标题
-
+title = [imgName,'*'];
+set(handles.figure1,'Name',title); % 更改标题
+% posText = text(width+10,10,''); 
+% set(gcf,'WindowButtonMotionFcn',@callback);
 while(1)
     pause(0.1);
+%     tmouse;
     % 按ESC结束标记
     if strcmpi(get(gcf,'CurrentCharacter'),char(27)) %按esc退出
         set(gcf,'CurrentCharacter','~');
@@ -271,21 +328,29 @@ while(1)
         break;
     end
     [x,y,button] = ginput(1);
+    set(handles.posText,'string',[num2str(round(x)),',',num2str(round(y))]);
+%     posText = text(width+10,10,''); 
+%     set(posText,'String',[num2str(x),',',num2str(y)]);% 实时显示鼠标所在的像素坐标
+%     pause(0.1);
+%     delete(posText);
     % 超出图像边界不作处理
     if x < 0 || x > width || y < 0 || y > height
         return;
     end
     if button == 1 %按下鼠标左键才标记
         x = round(x);
-        y = round(y);
+        y = round(y); 
+        [x,y]
         pointHandles(count) = {plot(x,y,'r+')};
         points = [points;[x,y]];
         tmp = points;
-        if count > 3 % 只保存3次回退点结果
-            count = 3;
+        if count > 5 % 只保存5次回退点结果
+            count = 5;
             pointHandles{1} = pointHandles{2};
             pointHandles{2} = pointHandles{3};
             pointHandles{3} = pointHandles{4};
+            pointHandles{4} = pointHandles{5};
+            pointHandles{5} = pointHandles{6};
         end
         count = count + 1;
     end
@@ -293,9 +358,18 @@ end
 
 % ----------------------------------------------------------------
 function Exit_Callback(hObject, eventdata, handles)
+global img;
+global fid;
 if  isequal(questdlg('Quit or not?','Quit','Yes', 'No' ...
         , 'Yes'), 'Yes')
     closereq;
+    if img ~= -1 
+        clear img;
+    end
+    if fid ~= -1
+        fclose(fid);
+        fid = -1;
+    end
     delete(hObject);
 end
 
@@ -307,3 +381,35 @@ function figure1_CloseRequestFcn(hObject, eventdata, handles)
 
 % Hint: delete(hObject) closes the figure
 Exit_Callback(hObject, eventdata, handles);
+
+function mouseMove(x,y)
+global width;
+print('mouseMove');
+posText = text(width+10,100,''); 
+set(posText,'String',[num2str(x),',',num2str(y)]);% 实时显示鼠标所在的像素坐标
+pause(0.1);
+delete(posText);
+
+function callback(hObject, event)
+global width;
+posText = text(width+10,10,'');
+loc = get(gca, 'CurrentPoint');
+loc = loc([1 3]);
+set(posText, 'String', num2str(loc));
+pause(1);
+delete(posText);
+
+function tmouse(action)
+global h
+global width
+if nargin == 0, action = 'start'; end
+switch(action)
+  case 'start'
+        set(gcf,'WindowButtonMotionFcn','tmouse move');
+        h = text(width+10,10,' ');
+  case 'move'
+        currPt = get(gca, 'CurrentPoint');
+        x = currPt(1,1);
+        y = currPt(1,2);
+        set(h,'String',[num2str(x),',',num2str(y)]);
+ end
